@@ -58,7 +58,7 @@ export class PlaudPersonalIdentityProvisioner {
 
   async provision(options: { token: string; serial: string; identifier: string; signal?: AbortSignal }): Promise<ProvisionedIdentity> {
     const { serial, identifier } = options;
-    if (!PLAUD_SERIAL_PATTERN.test(serial)) throw new Error('A 16-character Plaud serial number is required.');
+    if (!PLAUD_SERIAL_PATTERN.test(serial)) throw new Error('A 16- to 18-character Plaud serial number is required.');
     if (!isBluetoothIdentifier(identifier)) throw new Error('A Bluetooth address for the recorder is required.');
     const token = normalizeAccessToken(options.token);
     const claims = parseAccessToken(token);
