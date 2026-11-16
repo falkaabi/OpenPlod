@@ -3,6 +3,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import { Check, KeyRound, Loader2, ShieldCheck, Trash2 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { api, type PlaudIdentityStatus, type PlaudStatus } from '@/lib/api'
+import { needsManualSerial, plaudModelName } from '@/lib/plaud-model'
 import { t } from '@/i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getRuntime } from '@/lib/runtime'
@@ -27,6 +28,7 @@ export function PlaudDeviceAuthorization({ status, onAuthorized, variant = 'page
   const [token, setToken] = useState('')
   const [accountType, setAccountType] = useState<'personal' | 'partner'>('personal')
   const [domain, setDomain] = useState('platform-us.plaud.ai')
+  const [serial, setSerial] = useState('')
   const [busy, setBusy] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'signing-in' | 'authorizing' | 'verifying'>('idle')
   const [verified, setVerified] = useState(false)
@@ -36,6 +38,13 @@ export function PlaudDeviceAuthorization({ status, onAuthorized, variant = 'page
   const automatic = desktop && accountType === 'personal'
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+
+  // The advertisement carries the full registry serial (16 characters on a Note Pro,
+  // 18 on a Plaud Note). It is prefilled as a default the user can still correct.
+  useEffect(() => { setSerial(status?.deviceSerial ?? '') }, [status?.deviceSerial])
+
+  const model = plaudModelName(identity?.deviceType ?? status?.deviceModel)
+  const manualSerial = needsManualSerial(status?.deviceModel ?? null, status?.deviceSerial)
 
   const load = useCallback(async () => {
     try { setIdentity(await api.getPlaudIdentity()) } catch (failure) { setError(failure instanceof Error ? failure.message : t('Could not read the recorder authorization.')) }
@@ -84,7 +93,7 @@ export function PlaudDeviceAuthorization({ status, onAuthorized, variant = 'page
         try {
           await api.authorizePlaudDevice({
             token: credential || undefined, accountType, domain, operationId: current.id,
-            serial: status?.deviceSerial || undefined, identifier: status?.deviceIdentifier || undefined,
+            serial: serial.trim().toUpperCase() || undefined, identifier: status?.deviceIdentifier || undefined,
           }, current.controller.signal)
         } finally { credential = ''; setToken('') }
         await load()
@@ -128,13 +137,13 @@ export function PlaudDeviceAuthorization({ status, onAuthorized, variant = 'page
   return <section className={`plaud-authorize plaud-authorize--${variant}`} aria-label={t('Authorize this Plaud recorder')}>
     <div className="plaud-authorize-heading">
       <KeyRound />
-      <h2>{t('Authorize this Note Pro')}</h2>
+      <h2>{model ? t('Authorize this {model}', { model }) : t('Authorize this Plaud recorder')}</h2>
       {verified && <Check className="plaud-authorize-done" aria-label={t('Authorized')} />}
     </div>
     {identity?.authorized ? <>
       <p>{t('Authorization keys are saved on this computer. Verify Bluetooth access to confirm the recorder is reachable.')}</p>
       <dl className="plaud-authorize-facts">
-        {identity.deviceType && <div><dt>{t('Model')}</dt><dd>{identity.deviceType}</dd></div>}
+        {identity.deviceType && <div><dt>{t('Model')}</dt><dd>{plaudModelName(identity.deviceType) ?? identity.deviceType}</dd></div>}
         <div><dt>{t('Serial number')}</dt><dd>{identity.serial}</dd></div>
         <div><dt>{t('Bluetooth address')}</dt><dd>{identity.identifier}</dd></div>
       </dl>
@@ -152,11 +161,15 @@ export function PlaudDeviceAuthorization({ status, onAuthorized, variant = 'page
         </select>
       </label>
       {waitingForDevice
-        ? <p>{t('Wake the Note Pro and keep it near this computer so its serial number and Bluetooth address can be read.')}</p>
+        ? <p>{t('Wake the recorder and keep it near this computer so its serial number and Bluetooth address can be read.')}</p>
         : status?.deviceSerial && <p>{rich(t('Recorder detected: {name} / {serial}'), { name: status.deviceName || 'Plaud', serial: <code>{status.deviceSerial}</code> })}</p>}
       {!automatic && <label className="plaud-authorize-field"><span>{t('Plaud sign-in token')}</span>
         <input type="password" autoComplete="off" spellCheck={false} value={token} placeholder={accountType === 'personal' ? t('Paste the pld_ut cookie from web.plaud.ai') : t('Paste your Plaud Partner user access token')} aria-label={t('Plaud sign-in token')} onChange={event => setToken(event.target.value)} />
       </label>}
+      <label className="plaud-authorize-field"><span>{t('Serial number (optional)')}</span>
+        <input value={serial} autoComplete="off" spellCheck={false} maxLength={18} placeholder={t('Detected automatically when possible')} aria-label={t('Serial number (optional)')} onChange={event => setSerial(event.target.value)} />
+      </label>
+      {manualSerial && <p className="plaud-authorize-hint">{t('A Plaud Note uses an 18-character serial number, shown in the Plaud app under device information. Enter it if the detected serial is shorter.')}</p>}
       {accountType === 'partner' && <label className="plaud-authorize-field"><span>{t('Plaud region')}</span>
         <select value={domain} aria-label={t('Plaud region')} onChange={event => setDomain(event.target.value)}>{domains.map(value => <option key={value} value={value}>{value}</option>)}</select>
       </label>}
